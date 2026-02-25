@@ -1,0 +1,10 @@
+torch
+numpy
+scikit-learn
+onnxruntime
+onnx
+onnxscript
+fastapi
+uvicorn[standard]
+pydantic
+pandas

@@ -1,0 +1,6 @@
+{
+    "server_url": "http://YOUR_SERVER_IP:8000",
+    "api_version": "v1",
+    "timeout_seconds": 30,
+    "retry_attempts": 3
+}

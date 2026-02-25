@@ -1,0 +1,37 @@
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+**/__pycache__/
+**/*.pyc
+**/.venv/
+
+# Environment
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Secrets & Keys
+**/*.pem
+**/*.key
+**/credentials.json
+**/service-account.json
+**/.secrets
+**/secrets/
+
+# Backup files
+**/*.bak
+**/*.backup
+**/*.old
+
+# Temporary files
+**/*.tmp
+**/*.temp
+**/*.swp
+**/*.swo
+**/*.log

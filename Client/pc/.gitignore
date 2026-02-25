@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# PyInstaller
+*.spec
+build/
+dist/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+local_db/*.db
+local_db/*.db.bak
+
+# ML Models - ВАЖНО!
+ml/TaskLoad/*.onnx
+ml/TaskLoad/*.onnx.data
+ml/TaskLoad/*.pkl
+ml/TaskPriority/*.onnx
+ml/TaskPriority/*.onnx.data
+ml/TaskPriority/*.pkl
+
+# Qt Settings (содержат токены!)
+*.ini
+.qsettings
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# User-specific files
+config.json
+settings.json

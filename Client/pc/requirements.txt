@@ -1,0 +1,10 @@
+onnxruntime==1.17.3
+onnx
+scikit-learn
+onnxscript
+sqlalchemy
+pyqt6
+pyinstaller
+requests
+cryptography
+websocket-client

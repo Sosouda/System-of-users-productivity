@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ML Models - ВАЖНО! Большие файлы
+*.pt
+*.pth
+*.onnx
+*.onnx.data
+*.pkl
+*.h5
+*.pb
+*.tflite
+
+# Training Data
+*.csv
+*.json
+*.parquet
+
+# Model artifacts
+
+checkpoints/
+runs/
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
