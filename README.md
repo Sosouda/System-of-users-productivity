@@ -260,7 +260,7 @@ MIT License — см. [LICENSE](LICENSE) файл для деталей.
 
 ## 📞 Контакты
 
-- **Issues:** [GitHub Issues](https://github.com/sosouda/productivity-sync/issues)
+- **Issues:** [GitHub Issues](https://github.com/Sosouda/System-of-users-productivity/issues)
 - **Email:** silverhedgehog432@gmail.com
 - **Telegram:** @sosouda
 
