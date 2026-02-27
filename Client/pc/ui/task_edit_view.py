@@ -149,20 +149,11 @@ class EditWindow(QWidget):
         width: 16px;
         height: 16px;
     }
-    QCheckBox::indicator:checked {
-        image: url(:/icons/check.png);
-    }
     QRadioButton::indicator:checked {
         background-color: #4a90e2;
         border-radius: 8px;
     }
-    QCheckBox::indicator:checked {
-    background-color: #2e7d32; /* Цвет фона при нажатии (зеленый) */
-    border: 2px solid #2e7d32;
-    /* Рисуем галочку стилем (белая точка или кастомный символ) */
-    image: url(none); 
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='white'%3E%3Cpath d='M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z'/%3E%3C/svg%3E");
-    }
+    
     """)
         self.show()
 
@@ -245,7 +236,18 @@ class EditWindow(QWidget):
         right_col.addStretch()  # Поджимаем чекбокс вниз
         self.done_checkbox = QCheckBox("Задача выполнена")
         self.done_checkbox.setStyleSheet("font-weight: bold; color: #2e7d32;")
+        self.done_checkbox.setStyleSheet("""QCheckBox::indicator:checked {
+                                                background-color: #2e7d32; 
+                                                border: 2px solid #2e7d32;
+                                            }""")
+        self.cancel_checkbox = QCheckBox("Отменить задачу")
+        self.cancel_checkbox.setStyleSheet("font-weight: bold; color: #960018;")
+        self.cancel_checkbox.setStyleSheet("""QCheckBox::indicator:checked {
+                                                        background-color: #960018; 
+                                                        border: 2px solid #960018;
+                                                    }""")
         right_col.addWidget(self.done_checkbox)
+        right_col.addWidget(self.cancel_checkbox)
 
         grid_params.addLayout(left_col)
         grid_params.addLayout(right_col)
@@ -265,6 +267,8 @@ class EditWindow(QWidget):
             new_status = "completed"
             today = dt_date.today()
             update_daily_info_complete_task(today,self.title,self.description)
+        elif self.cancel_checkbox.isChecked() == True:
+            new_status = "cancelled"
         else:
             new_status = "underway"
         russian_task_type = self.task_type_edcombo.currentText()

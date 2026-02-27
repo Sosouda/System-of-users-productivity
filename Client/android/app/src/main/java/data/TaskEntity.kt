@@ -19,9 +19,7 @@ import java.util.UUID
             onDelete = ForeignKey.CASCADE
         )
     ],
-    indices = [
-        Index(value = ["task_type_id"])
-    ]
+    indices = [Index(value = ["task_type_id"])]
 )
 data class TaskEntity(
     @PrimaryKey

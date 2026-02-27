@@ -36,7 +36,7 @@ class Task(Base):
         String, CheckConstraint("final_priority IN ('Casual','Low','Mid','High','Extreme')")
     )
     status = Column(
-        String, CheckConstraint("status IN ('underway','completed','overdue')"), default='underway'
+        String, CheckConstraint("status IN ('underway','completed','overdue','cancelled')"), default='underway'
     )
 
     task_type = relationship("TaskType", back_populates="tasks")

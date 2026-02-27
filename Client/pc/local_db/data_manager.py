@@ -135,6 +135,16 @@ def select_underway_tasks():
     session.close()
     return tasks
 
+def select_completed_tasks():
+    session = Session()
+    tasks = []
+    query = select(Task.title).where(Task.status == "completed")
+    result = session.execute(query)
+    tasks_obj = result.all()
+    for task in tasks_obj:
+        tasks.append(task.title)
+    session.close()
+    return tasks
 
 def select_task_property_for_edit(task_title):
     session = Session()

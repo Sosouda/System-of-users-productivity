@@ -150,9 +150,11 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE deadline >= :start AND deadline < :end")
     fun selectDailyTasks(start: OffsetDateTime, end: OffsetDateTime): Flow<List<TaskEntity>>
 
-    @Query("SELECT * FROM tasks WHERE status != 'completed'")
+    @Query("SELECT * FROM tasks WHERE status != 'completed' AND status != 'cancelled'")
     fun selectTasksForInventory(): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE status = :status ORDER BY created_at DESC")
+    fun selectTasksByStatus(status: String): Flow<List<TaskEntity>>
     @Query("SELECT * FROM tasks")
     suspend fun getAllTasksOnce(): List<TaskEntity>
 

@@ -3,7 +3,7 @@ import subprocess
 from PyQt6.QtWidgets import (QWidget, QLabel, QPushButton,
                              QVBoxLayout, QHBoxLayout,
                              QStackedLayout, QCalendarWidget, QListWidget,
-                             QScrollArea, QGridLayout, QMessageBox)
+                             QScrollArea, QGridLayout, QMessageBox, QCheckBox)
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QFont
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSettings
 import pyqtgraph as pg
@@ -13,7 +13,8 @@ import sys
 from api.auth_manager import AuthManager
 from api.sync_service import SyncService
 from local_db.data_manager import (select_daily_tasks, select_task_property_for_edit, select_underway_tasks,
-                                   select_daily_task_complete, select_closest_tasks, select_capacity_parametrs)
+                                   select_daily_task_complete, select_closest_tasks, select_capacity_parametrs,
+                                   select_completed_tasks)
 from ml.load import predict_capacity
 from ui.task_create_view import TaskWindow
 from ui.task_edit_view import EditWindow
@@ -202,8 +203,16 @@ class MainWindow(QWidget):
         back_button = QPushButton("Вернуться", self)
         back_button.clicked.connect(self.goToMainScreen)
 
+        self.show_completed_cb = QCheckBox("Показать выполненные", self)
+        self.show_completed_cb.setStyleSheet("""QCheckBox::indicator:checked {
+                                                                background-color: #2e7d32; 
+                                                                border: 2px solid #2e7d32;
+                                                            }""")
+        self.show_completed_cb.stateChanged.connect(self.refreshTaskList)
+
         upper_layout = QHBoxLayout()
         upper_layout.addWidget(description_label)
+        upper_layout.addWidget(self.show_completed_cb)
         upper_layout.addWidget(back_button)
 
         bottom_layout = QHBoxLayout()
@@ -211,19 +220,16 @@ class MainWindow(QWidget):
         self.task_scroll = QScrollArea()
         self.task_scroll.setWidgetResizable(True)
 
-        grid = QWidget()
-        scroll_layout = QGridLayout(grid)
-        tasks = select_underway_tasks()
-        for title in tasks:
-            task_btn = QPushButton(f"{title}", self)
-            task_btn.clicked.connect(lambda _, t=title: self.openTaskEditor(t))
-            scroll_layout.addWidget(task_btn)
-        self.task_scroll.setWidget(grid)
+        self.task_container = QWidget()
+        self.scroll_layout = QGridLayout(self.task_container)
+        self.task_scroll.setWidget(self.task_container)
+
         bottom_layout.addWidget(self.task_scroll)
+
         tasklist_layout.addLayout(upper_layout)
         tasklist_layout.addLayout(bottom_layout)
 
-        self.calendarScreen.setLayout(tasklist_layout)
+        self.refreshTaskList()
     def setUpStatisticScreen(self):
         statistic_layout = QVBoxLayout(self.statisticScreen)
 
@@ -370,12 +376,20 @@ class MainWindow(QWidget):
         grid = QWidget()
         scroll_layout = QGridLayout(grid)
 
-        tasks = select_underway_tasks()
+        if hasattr(self, 'show_completed_cb') and self.show_completed_cb.isChecked():
+            tasks = select_completed_tasks()
+            btn_color = "#2e7d32"
+        else:
+            tasks = select_underway_tasks()
+            btn_color = "#4a90e2"
+
         for i, title in enumerate(tasks):
-            task_btn = QPushButton(title, self)
+            task_btn = QPushButton(str(title), self)
+            task_btn.setStyleSheet(f"QPushButton {{ background-color: {btn_color}; padding: 10px; }}")
             task_btn.clicked.connect(lambda _, t=title: self.openTaskEditor(t))
             scroll_layout.addWidget(task_btn, i, 0)
 
+        scroll_layout.setRowStretch(len(tasks), 1)
         self.task_scroll.setWidget(grid)
 
     def openStatistic(self, op):

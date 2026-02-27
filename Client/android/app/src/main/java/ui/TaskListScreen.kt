@@ -36,17 +36,17 @@ import java.time.ZoneOffset
 
 
 val taskTypeTranslations = mapOf(
-    "Dust Cleaning" to "Уборка пыли",
+    "Dust Cleaning" to "Уборка",
     "Meeting" to "Встреча",
     "Documentation" to "Документация",
-    "Customer Support" to "Поддержка клиентов",
-    "Code Bug Fix" to "Исправление багов",
+    "Customer Support" to "Поддержка",
+    "Code Bug Fix" to "Баги",
     "Research" to "Исследование",
-    "Feature Development" to "Разработка фич",
+    "Feature Development" to "Разработка",
     "Optimization" to "Оптимизация",
     "Deployment" to "Деплой",
-    "Project Management" to "Управление проектом",
-    "Other" to "Другое"
+    "Project Management" to "Менеджмент",
+    "Other" to "Прочее"
 )
 
 val priorityTranslations = mapOf(
@@ -61,7 +61,14 @@ val priorityTranslations = mapOf(
 fun DrawTaskList(dao: TaskDao) {
     var showTaskDialog by remember { mutableStateOf(false) }
     var selectedTask by remember { mutableStateOf<TaskEntity?>(null) }
-    val tasks by dao.selectTasksForInventory().collectAsState(initial = emptyList())
+
+    var showCompletedOnly by remember { mutableStateOf(false) }
+
+    val tasks by if (showCompletedOnly) {
+        dao.selectTasksByStatus("completed").collectAsState(initial = emptyList())
+    } else {
+        dao.selectTasksForInventory().collectAsState(initial = emptyList())
+    }
 
     Column(
         modifier = Modifier
@@ -69,22 +76,43 @@ fun DrawTaskList(dao: TaskDao) {
             .background(BackgroundColor)
             .padding(16.dp)
     ) {
-        Text(
-            text = "Список задач",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = TextDark
-        )
-        Text(
-            text = "Управляйте задачами индивидуально",
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextGray,
-            modifier = Modifier.padding(bottom = 24.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Список задач",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+                Text(
+                    text = if (showCompletedOnly) "Архив выполненных" else "Активные задачи",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextGray
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Вып.", fontSize = 12.sp, color = TextGray)
+                Checkbox(
+                    checked = showCompletedOnly,
+                    onCheckedChange = { showCompletedOnly = it },
+                    colors = CheckboxDefaults.colors(checkedColor = PrimaryBlue)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (tasks.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Нет активных задач", color = TextGray)
+                Text(
+                    text = if (showCompletedOnly) "Нет выполненных задач" else "Активных задач не найдено",
+                    color = TextGray
+                )
             }
         } else {
             LazyColumn(
@@ -95,6 +123,7 @@ fun DrawTaskList(dao: TaskDao) {
                 items(tasks) { taskEntity ->
                     TaskInventoryItem(
                         task = TitleDesc(title = taskEntity.title, description = taskEntity.description ?: ""),
+                        status = taskEntity.status,
                         onClick = {
                             selectedTask = taskEntity
                             showTaskDialog = true
@@ -110,7 +139,7 @@ fun DrawTaskList(dao: TaskDao) {
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.85f),
+                    .fillMaxHeight(0.9f),
                 shape = RoundedCornerShape(28.dp),
                 color = BackgroundColor
             ) {
@@ -127,7 +156,7 @@ fun DrawTaskList(dao: TaskDao) {
 }
 
 @Composable
-fun TaskInventoryItem(task: TitleDesc, onClick: () -> Unit) {
+fun TaskInventoryItem(task: TitleDesc, status: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -139,13 +168,30 @@ fun TaskInventoryItem(task: TitleDesc, onClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .size(40.dp)
-                    .background(PrimaryBlue.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                    .background(
+                        when(status) {
+                            "completed" -> SuccessGreen.copy(0.1f)
+                            "cancelled" -> Color.Gray.copy(0.1f)
+                            else -> PrimaryBlue.copy(0.1f)
+                        },
+                        RoundedCornerShape(12.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Edit, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(20.dp))
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = if (status == "completed") SuccessGreen else if (status == "cancelled") Color.Gray else PrimaryBlue,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Column(modifier = Modifier.padding(start = 16.dp).weight(1f)) {
-                Text(text = task.title, fontWeight = FontWeight.Bold, color = TextDark, fontSize = 16.sp)
+                Text(
+                    text = task.title,
+                    fontWeight = FontWeight.Bold,
+                    color = if (status == "cancelled") TextGray else TextDark,
+                    fontSize = 16.sp
+                )
                 Text(text = task.description, color = TextGray, fontSize = 13.sp, maxLines = 1)
             }
             Icon(Icons.Default.Info, contentDescription = null, tint = TextGray.copy(alpha = 0.5f))
@@ -164,13 +210,12 @@ fun TaskDetailDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
     val scrollState = rememberScrollState()
 
     var taskTypeEng by remember { mutableStateOf("Other") }
     var taskDeadline by remember { mutableStateOf("") }
     var taskPriorityEng by remember { mutableStateOf("Mid") }
-    var isCompleted by remember { mutableStateOf(false) }
+    var currentStatus by remember { mutableStateOf("underway") }
 
     val priorityMap = mapOf("Casual" to 1, "Low" to 2, "Mid" to 3, "High" to 4, "Extreme" to 5)
 
@@ -178,12 +223,8 @@ fun TaskDetailDialog(
         val task = dao.selectTaskById(taskId)
         task?.let {
             taskDeadline = it.deadline?.toLocalDate()?.toString() ?: ""
-            isCompleted = it.status == "completed"
-
-            taskPriorityEng = priorityMap.entries.find { entry ->
-                entry.value.toString() == it.finalPriority || entry.key == it.finalPriority
-            }?.key ?: "Mid"
-
+            currentStatus = it.status
+            taskPriorityEng = it.finalPriority
             taskTypeEng = dao.getTaskTypeNameById(it.taskTypeId) ?: "Other"
         }
     }
@@ -231,40 +272,38 @@ fun TaskDetailDialog(
             taskPriorityEng = priorityTranslations.filterValues { it == selectedRus }.keys.firstOrNull() ?: "Mid"
         }
 
-        Surface(
+        Spacer(Modifier.height(16.dp))
+
+        Text("Статус задачи", fontWeight = FontWeight.SemiBold, fontSize = 14.sp, color = TextDark)
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp),
-            color = if (isCompleted) SuccessGreen.copy(0.1f) else Color.Transparent,
-            border = androidx.compose.foundation.BorderStroke(1.dp, if (isCompleted) SuccessGreen else TextGray.copy(0.3f))
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier
-                    .clickable { isCompleted = !isCompleted }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            StatusButton(
+                text = "В работе",
+                isSelected = currentStatus == "underway",
+                selectedColor = PrimaryBlue,
+                modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = if (isCompleted) SuccessGreen else TextGray.copy(0.3f)
-                )
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = if (isCompleted) "Выполнено" else "В процессе",
-                    color = if (isCompleted) SuccessGreen else TextDark,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(Modifier.weight(1f))
-                Switch(
-                    checked = isCompleted,
-                    onCheckedChange = { isCompleted = it },
-                    colors = SwitchDefaults.colors(checkedThumbColor = SuccessGreen)
-                )
+                currentStatus = "underway"
+            }
+            StatusButton(
+                text = "Выполнено",
+                isSelected = currentStatus == "completed",
+                selectedColor = Color(0xFF4CAF50), // Зеленый
+                modifier = Modifier.weight(1f)
+            ) {
+                currentStatus = "completed"
+            }
+            StatusButton(
+                text = "Отмена",
+                isSelected = currentStatus == "cancelled",
+                selectedColor = Color(0xFFE57373), // Красный
+                modifier = Modifier.weight(1f)
+            ) {
+                currentStatus = "cancelled"
             }
         }
-
-        Spacer(Modifier.height(8.dp))
-
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -283,7 +322,6 @@ fun TaskDetailDialog(
                         try {
                             val typeId = dao.getTaskTypeIdByName(taskTypeEng) ?: 9
                             val now = OffsetDateTime.now(ZoneOffset.UTC)
-
                             val deadlineParsed = try {
                                 LocalDate.parse(taskDeadline).atStartOfDay(ZoneOffset.UTC).toOffsetDateTime()
                             } catch (e: Exception) {
@@ -295,15 +333,17 @@ fun TaskDetailDialog(
                             dao.updateTaskPropertiesById(
                                 id = taskId,
                                 deadline = deadlineParsed,
-                                status = if (isCompleted) "completed" else "underway",
+                                status = currentStatus,
                                 priority = priorityInt,
                                 taskTypeId = typeId,
                                 updatedAt = now
                             )
 
-                            val today = LocalDate.now()
-                            val completedCount = dao.countCompletedTasksByDate(today.toString())
-                            dao.upsertCompletedStats(today, completedCount)
+                            if (currentStatus == "completed") {
+                                val today = LocalDate.now()
+                                val completedCount = dao.countCompletedTasksByDate(today.toString())
+                                dao.upsertCompletedStats(today, completedCount)
+                            }
 
                             withContext(Dispatchers.Main) {
                                 Toast.makeText(context, "Изменения сохранены", Toast.LENGTH_SHORT).show()
@@ -321,5 +361,24 @@ fun TaskDetailDialog(
                 Text("Сохранить")
             }
         }
+    }
+}
+
+@Composable
+fun StatusButton(text: String, isSelected: Boolean,selectedColor: Color, modifier: Modifier, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(12.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = if (isSelected) selectedColor.copy(alpha = 0.1f) else Color.Transparent,
+            contentColor = if (isSelected) selectedColor else TextGray
+        ),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isSelected) PrimaryBlue else TextGray.copy(0.3f)
+        )
+    ) {
+        Text(text, fontSize = 10.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
     }
 }
