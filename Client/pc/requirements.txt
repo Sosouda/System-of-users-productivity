@@ -8,3 +8,5 @@ pyinstaller
 requests
 cryptography
 websocket-client
+matplotlib
+torch

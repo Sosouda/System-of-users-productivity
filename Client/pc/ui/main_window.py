@@ -3,7 +3,8 @@ import subprocess
 from PyQt6.QtWidgets import (QWidget, QLabel, QPushButton,
                              QVBoxLayout, QHBoxLayout,
                              QStackedLayout, QCalendarWidget, QListWidget,
-                             QScrollArea, QGridLayout, QMessageBox, QCheckBox)
+                             QScrollArea, QGridLayout, QMessageBox, QCheckBox, QDialog,
+                             QTableView, QHeaderView)
 from PyQt6.QtGui import QPixmap, QPainter, QPainterPath, QFont
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSettings
 import pyqtgraph as pg
@@ -19,6 +20,9 @@ from ml.load import predict_capacity
 from ui.task_create_view import TaskWindow
 from ui.task_edit_view import EditWindow
 from ui.analytics_view import  AnslitycWindow
+from ui.workload_feedback_dialog import WorkloadFeedbackDialog
+from ml.feedback_collector import FeedbackCollector
+from ml.weights_sync import MLWeightsSync
 
 def draw_circular_progress(ax, percentage, color="dodgerblue"):
     ax.clear()
@@ -58,6 +62,7 @@ class MainWindow(QWidget):
         self.initializeUI()
         self.token = token
         self.sync_service = SyncService(token=self.token)
+        self.ml_sync = MLWeightsSync(token)  # ML синхронизация
         QTimer.singleShot(1000, self.run_auto_sync)
 
         self.sync_timer = QTimer(self)
@@ -84,25 +89,41 @@ class MainWindow(QWidget):
         upper_layout.setSpacing(20)
 
         ava_calendar_layout = QVBoxLayout()
-        pic_source = "ui/pic.png"
-        try:
-            pic_label = QLabel()
-            pic_pixmap = QPixmap(pic_source)
-            if not pic_pixmap.isNull():
-                round_pix = make_round_pixmap(pic_pixmap, 240)
-                pic_label.setPixmap(round_pix)
-                pic_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            ava_calendar_layout.addWidget(pic_label)
-        except Exception as e:
-            print(f"Ошибка загрузки фото: {e}")
+
 
         self.Sync = QPushButton("Синхронизировать данные")
         self.Sync.clicked.connect(self.syncro)
+
+        self.improve_btn = QPushButton("Сделай прогнозы лучше")
+        self.improve_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12;
+                border: 2px solid #e67e22;
+                border-radius: 6px;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+            }
+            QPushButton:hover {
+                background-color: #e67e22;
+            }
+        """)
+        self.improve_btn.clicked.connect(self.open_improve_feedback)
+        
+        # Метка с версией ML моделей
+        self.ml_version_label = QLabel("📊 ML: загрузка...")
+        self.ml_version_label.setFont(QFont("Arial", 9))
+        self.ml_version_label.setStyleSheet("color: #7f8c8a;")
+        self.ml_version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Обновим версию после полной инициализации
+        QTimer.singleShot(500, self.update_ml_version_label)
 
         Lout = QPushButton("Выйти из аккаунта")
         Lout.clicked.connect(self.handle_logout)
 
         ava_calendar_layout.addWidget(self.Sync)
+        ava_calendar_layout.addWidget(self.improve_btn)
+        ava_calendar_layout.addWidget(self.ml_version_label)
         ava_calendar_layout.addWidget(Lout)
         ava_calendar_layout.addStretch()
 
@@ -145,17 +166,35 @@ class MainWindow(QWidget):
         self.mainScreen.setLayout(main_layout)
     def setUpCalendarScreen(self):
         calendar_layout = QVBoxLayout(self.calendarScreen)
-        description_label = QLabel("Для добавления задачи нажмите на желаемую дату и на кнопку 'Добавить задачу'",self)
-        description_label.setStyleSheet("""QLabel {
-            border: 2px solid #4a90e2;   /* рамка */
-            border-radius: 6px;           /* скруглённые углы */
-            padding: 6px;                 /* отступы от текста */
-            color: #2e3440;               /* цвет текста */
-            font-weight: bold;            /* жирный текст */
-            font-size: 14px;              /* размер шрифта */
-            qproperty-alignment: 'AlignCenter';  /* выравнивание по центру */
-            background-color: #f8fafc; 
-            }""")
+
+        self.date_title_label = QLabel("Выберите дату для добавления задачи")
+        self.date_title_label.setStyleSheet("""
+            QLabel {
+                background-color: #2e7d32;
+                color: white;
+                border-radius: 8px;
+                padding: 12px;
+                font-weight: bold;
+                font-size: 16px;
+                qproperty-alignment: 'AlignCenter';
+            }
+        """)
+        calendar_layout.addWidget(self.date_title_label)
+        
+        description_label = QLabel("Нажмите на дату в календаре, затем добавьте задачу")
+        description_label.setStyleSheet("""
+            QLabel {
+                border: 2px solid #4a90e2;
+                border-radius: 6px;
+                padding: 6px;
+                color: #2e3440;
+                font-weight: bold;
+                font-size: 13px;
+                qproperty-alignment: 'AlignCenter';
+                background-color: #e3f2fd;
+            }
+        """)
+        
         back_button = QPushButton("Вернуться", self)
         back_button.clicked.connect(self.goToMainScreen)
 
@@ -163,19 +202,126 @@ class MainWindow(QWidget):
         upper_layout.addWidget(description_label)
         upper_layout.addWidget(back_button)
 
-
         bottom_layout = QHBoxLayout()
+        
         self.calend = QCalendarWidget(self)
         self.calend.selectionChanged.connect(self.dateSelect)
 
+        table_view = self.calend.findChild(QTableView)
+        if table_view:
+            table_view.verticalHeader().hide() 
+            table_view.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        
+        self.calend.setStyleSheet("""
+            /* Основной фон календаря */
+            QCalendarWidget {
+                background-color: #ffffff;
+                border: 1px solid #d0d7de;
+                border-radius: 12px;
+            }
+            
+            /* Навигация (месяц/год) */
+            QCalendarWidget QToolButton {
+                background-color: #4a90e2;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 16px;
+                margin: 4px;
+            }
+            QCalendarWidget QToolButton:hover {
+                background-color: #5aa1f2;
+            }
+            QCalendarWidget QToolButton:pressed {
+                background-color: #357abd;
+            }
+            
+            /* Дни недели (Пн, Вт, ...) */
+            QCalendarWidget QWidget#qt_calendar_navigationbar {
+                background-color: #f8fafc;
+                border: none;
+                border-bottom: 1px solid #d0d7de;
+            }
+            QCalendarWidget QWidget#qt_calendar_navigationbar QLabel {
+                font-weight: bold;
+                font-size: 14px;
+                color: #2e3440;
+            }
+            
+            /* Сетка дат - только для ячеек с датами */
+            QCalendarWidget QAbstractItemView {
+                background-color: #ffffff;
+                selection-background-color: #4a90e2;
+                selection-color: white;
+                border: none;
+                gridline-color: #e1e8ef;
+                show-decoration-selected: 0;
+            }
+            QCalendarWidget QAbstractItemView::item {
+                border: 1px solid #e1e8ef;
+                border-radius: 6px;
+                margin: 2px;
+                padding: 4px;
+                min-width: 40px;
+                min-height: 40px;
+            }
+            QCalendarWidget QAbstractItemView::item:selected {
+                background-color: #4a90e2;
+                color: white;
+                border-radius: 6px;
+            }
+            QCalendarWidget QAbstractItemView::item:hover {
+                background-color: #e3f2fd;
+                border: 1px solid #4a90e2;
+            }
+            
+            /* Выходные дни (суббота, воскресенье) */
+            QCalendarWidget QAbstractItemView::item:alternate {
+                background-color: #ffebee;
+                color: #c62828;
+            }
+            
+            /* Текущий день */
+            QCalendarWidget QAbstractItemView::item:current {
+                border: 2px solid #4a90e2;
+                font-weight: bold;
+            }
+            
+            /* Недоступные даты (серые) */
+            QCalendarWidget QAbstractItemView::item:disabled {
+                color: #bdc3c7;
+                background-color: #f5f5f5;
+            }
+        """)
+
         date_info_layout = QVBoxLayout()
-        add_tasks_button = QPushButton("Добавить задачу", self)
-        add_tasks_button.clicked.connect(self.openTaskCreator)
+
+        self.add_tasks_button = QPushButton("Добавить задачу")
+        self.add_tasks_button.setEnabled(False)
+        self.add_tasks_button.setStyleSheet("""
+            QPushButton {
+                background-color: #bdbdbd;
+                border: 2px solid #9e9e9e;
+                border-radius: 6px;
+                padding: 10px;
+                font-weight: bold;
+                font-size: 14px;
+            }
+            QPushButton:enabled {
+                background-color: #4caf50;
+                border: 2px solid #388e3c;
+            }
+            QPushButton:enabled:hover {
+                background-color: #43a047;
+            }
+        """)
+        self.add_tasks_button.clicked.connect(self.openTaskCreator)
+        
         self.date_info_list = QListWidget(self)
-        date_info_layout.addWidget(add_tasks_button)
+        date_info_layout.addWidget(self.add_tasks_button)
         date_info_layout.addWidget(self.date_info_list)
-
-
 
         bottom_layout.addWidget(self.calend)
         bottom_layout.addLayout(date_info_layout)
@@ -284,6 +430,8 @@ class MainWindow(QWidget):
         self.setLayout(self.stacked_layout)
 
     def goToCalendarScreen(self):
+        self.date_title_label.setText("📅 Выберите дату для добавления задачи")
+        self.add_tasks_button.setEnabled(False)
         self.stacked_layout.setCurrentWidget(self.calendarScreen)
     def goToTaskListScreen(self):
         self.refreshTaskList()
@@ -343,8 +491,12 @@ class MainWindow(QWidget):
         self.task_creator.show()
     def dateSelect(self):
         date_select = self.calend.selectedDate().toPyDate()
+        
+        self.date_title_label.setText(f"📅 Запланированные задачи на: {date_select.strftime('%d.%m.%Y')}")
+        
+        self.add_tasks_button.setEnabled(True)
+        
         self.date_info_list.clear()
-        self.date_info_list.addItem("Задачи,запланированные на: " + str(date_select) + "\n")
         daily_task_list = select_daily_tasks(date_select)
         self.priority_map = {
             "Авто": "Auto",
@@ -452,10 +604,65 @@ class MainWindow(QWidget):
                 self.cls_tsk_layout.addWidget(task_card)
 
         self.cls_tsk_layout.addStretch(1)
+    
+    def update_ml_version_label(self):
+        """Обновить метку с версиями ML моделей"""
+        try:
+            if hasattr(self, 'ml_sync') and self.ml_sync:
+                versions = self.ml_sync.versions
+                taskload = versions.get('taskload', '1.0.0')
+                taskpriority = versions.get('taskpriority', '1.0.0')
+                
+                self.ml_version_label.setText(
+                    f"📊 ML: TaskLoad v{taskload} | TaskPriority v{taskpriority}"
+                )
+                print(f"✅ ML версии обновлены: TaskLoad v{taskload}, TaskPriority v{taskpriority}")
+            else:
+                self.ml_version_label.setText("📊 ML: синхронизация...")
+        except Exception as e:
+            print(f"⚠️ Ошибка обновления ML версий: {e}")
+            self.ml_version_label.setText("📊 ML: ошибка")
 
-
-
+    def open_improve_feedback(self):
+        """Открывает диалог сбора обратной связи для улучшения модели"""
+        dialog = WorkloadFeedbackDialog(self)
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
+            workload = dialog.get_workload()
+            if workload is not None:
+                try:
+                    FeedbackCollector.submit_workload_feedback(workload)
+                    QMessageBox.information(
+                        self, 
+                        "Спасибо!", 
+                        f"Ваша оценка нагрузки ({workload}/100) сохранена.\n"
+                        "Это поможет улучшить точность прогнозов!"
+                    )
+                except Exception as e:
+                    QMessageBox.critical(
+                        self,
+                        "Ошибка",
+                        f"Не удалось сохранить оценку: {e}"
+                    )
+    
+    def show_workload_feedback_dialog(self):
+        """Показывает диалог оценки нагрузки перед выходом"""
+        dialog = WorkloadFeedbackDialog(self)
+        result = dialog.exec()
+        
+        if result == QDialog.DialogCode.Accepted:
+            workload = dialog.get_workload()
+            if workload is not None:
+                try:
+                    FeedbackCollector.submit_workload_feedback(workload)
+                    print(f"✅ Оценка нагрузки сохранена: {workload}/10")
+                except Exception as e:
+                    print(f"❌ Ошибка при сохранении оценки: {e}")
+    
     def handle_logout(self):
+        self.show_workload_feedback_dialog()
+        
         if hasattr(self, 'sync_timer'):
             self.sync_timer.stop()
 
@@ -492,17 +699,44 @@ class MainWindow(QWidget):
             QMessageBox.warning(self, "Ошибка", "Нужна авторизация")
             return
 
+        from ui.sync_progress_dialog import SyncProgressDialog
+        self.sync_progress = SyncProgressDialog(self)
+        self.sync_progress.show()
+        
         self.Sync.setEnabled(False)
-        sync_service = SyncService(token)
-        success, message = sync_service.run_sync()
-
-        if success:
-            QMessageBox.information(self, "Успех", message)
-            self.refresh_closest_tasks()
-        else:
-            QMessageBox.critical(self, "Ошибка", f"Синхронизация не удалась: {message}")
-
+        
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self._run_manual_sync)
+    
+    def _run_manual_sync(self):
+        """Запуск ручной синхронизации"""
+        try:
+            self.sync_progress.set_status("Синхронизация задач...")
+            
+            sync_service = SyncService(self.token)
+            success, message = sync_service.run_sync()
+            
+            if success:
+                self.sync_progress.set_status("✅ Синхронизация завершена!")
+                self.sync_progress.set_details(message)
+                QTimer.singleShot(1500, self._finish_manual_sync)
+            else:
+                self.sync_progress.set_status("⚠️ Ошибка синхронизации")
+                self.sync_progress.set_details(message)
+                QTimer.singleShot(2000, self._finish_manual_sync)
+                
+        except Exception as e:
+            self.sync_progress.set_status("❌ Ошибка")
+            self.sync_progress.set_details(str(e))
+            QTimer.singleShot(2000, self._finish_manual_sync)
+    
+    def _finish_manual_sync(self):
+        """Завершение ручной синхронизации"""
+        self.sync_progress.finish()
         self.Sync.setEnabled(True)
+        
+        if hasattr(self, 'refresh_closest_tasks'):
+            self.refresh_closest_tasks()
 
     def run_auto_sync(self):
         print("🔄 Запуск автоматической синхронизации...")

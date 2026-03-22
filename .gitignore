@@ -35,3 +35,16 @@ Thumbs.db
 **/*.swp
 **/*.swo
 **/*.log
+
+Backend/sync_server/app/ml_storage/backups/
+Backend/sync_server/app/ml_storage/base/
+Backend/sync_server/app/ml_storage/*.jsonl
+
+Client/pc/ml/versions.json
+Client/pc/ml/archived_weights/
+Client/pc/ml/ml_reports/
+Client/pc/ml/test_*.py
+
+Client/pc/local_db/*.db
+Client/pc/local_db/local_db/
+Client/pc/test_*.py

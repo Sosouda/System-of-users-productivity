@@ -35,7 +35,8 @@ class AnslitycWindow(QWidget):
         self.status_map = {
             "underway": "В работе",
             "completed": "Выполнено",
-            "overdue":"Просрочено"
+            "overdue":"Просрочено",
+            "cancelled":"Отменено"
         }
 
         self.task_type_map = {

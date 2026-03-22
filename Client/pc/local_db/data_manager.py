@@ -6,7 +6,7 @@ import uuid
 from datetime import timezone
 import shutil
 
-from local_db.models import Base, TaskType, Task, DailyStats
+from local_db.models import Base, TaskType, Task, DailyStats, MLFeedbackTaskLoad, MLFeedbackTaskPriority
 import os
 import sys
 
@@ -316,10 +316,10 @@ def update_daily_info_complete_task(date, title, description):
 def update_tasks_status():
     session = Session()
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now()
         tasks = session.query(Task).filter(Task.status != "completed").all()
         for task in tasks:
-            if task.deadline < now:
+            if task.deadline and task.deadline < now:
                 task.status = "overdue"
 
         overdue_tasks = len(session.query(Task).filter(Task.status == "overdue").all())
@@ -454,4 +454,144 @@ def select_duplicate_deadline(title,description):
     session.close()
     dup_deadline = datetime.date(task_dup)
     return dup_deadline
+
+
+# ==================== ML FEEDBACK ФУНКЦИИ ====================
+
+def insert_ml_feedback_taskload(active_tasks, avg_priority, max_priority, avg_hours_to_deadline, overdue_tasks, predicted_workload, actual_workload):
+    """
+    Сохраняет обратную связь для дообучения модели TaskLoad.
+    
+    Args:
+        active_tasks: кол-во активных задач
+        avg_priority: средний приоритет
+        max_priority: максимальный приоритет
+        avg_hours_to_deadline: среднее кол-во часов до дедлайна
+        overdue_tasks: кол-во просроченных задач
+        predicted_workload: предсказание модели (0-100)
+        actual_workload: оценка пользователя (10-100)
+    """
+    session = Session()
+    try:
+        feedback = MLFeedbackTaskLoad(
+            active_tasks=active_tasks,
+            avg_priority=avg_priority,
+            max_priority=max_priority,
+            avg_hours_to_deadline=avg_hours_to_deadline,
+            overdue_tasks=overdue_tasks,
+            predicted_workload=predicted_workload,
+            actual_workload=actual_workload
+        )
+        session.add(feedback)
+        session.commit()
+        print(f"✅ ML Feedback TaskLoad сохранён: predicted={predicted_workload}, actual={actual_workload}")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка при сохранении ML Feedback TaskLoad: {e}")
+        raise e
+    finally:
+        session.close()
+
+
+def insert_ml_feedback_taskpriority(task_id, task_type, hours_left, urgency, user_priority):
+    """
+    Сохраняет обратную связь для дообучения модели TaskPriority.
+    Вызывается когда пользователь создал задачу и вручную выставил приоритет (без AI).
+    """
+    session = Session()
+    try:
+        feedback = MLFeedbackTaskPriority(
+            task_id=task_id,
+            task_type=task_type,
+            hours_left=hours_left,
+            urgency=urgency,
+            user_priority=user_priority
+        )
+        session.add(feedback)
+        session.commit()
+        print(f"✅ ML Feedback TaskPriority сохранён: task_id={task_id}, priority={user_priority}")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка при сохранении ML Feedback TaskPriority: {e}")
+        raise e
+    finally:
+        session.close()
+
+
+def get_unsynced_ml_feedback_taskload():
+    """Возвращает все несинхронизированные записи TaskLoad"""
+    session = Session()
+    try:
+        query = select(MLFeedbackTaskLoad).where(MLFeedbackTaskLoad.is_synced == False)
+        result = session.execute(query).scalars().all()
+        return list(result)
+    finally:
+        session.close()
+
+
+def get_unsynced_ml_feedback_taskpriority():
+    """Возвращает все несинхронизированные записи TaskPriority"""
+    session = Session()
+    try:
+        query = select(MLFeedbackTaskPriority).where(MLFeedbackTaskPriority.is_synced == False)
+        result = session.execute(query).scalars().all()
+        return list(result)
+    finally:
+        session.close()
+
+
+def mark_ml_feedback_taskload_synced(feedback_ids):
+    """Отмечает записи TaskLoad как синхронизированные"""
+    session = Session()
+    try:
+        session.query(MLFeedbackTaskLoad).filter(
+            MLFeedbackTaskLoad.id.in_(feedback_ids)
+        ).update({"is_synced": True}, synchronize_session=False)
+        session.commit()
+        print(f"✅ Отмечено {len(feedback_ids)} записей TaskLoad как синхронизированных")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка при маркировке TaskLoad: {e}")
+    finally:
+        session.close()
+
+
+def mark_ml_feedback_taskpriority_synced(feedback_ids):
+    """Отмечает записи TaskPriority как синхронизированные"""
+    session = Session()
+    try:
+        session.query(MLFeedbackTaskPriority).filter(
+            MLFeedbackTaskPriority.id.in_(feedback_ids)
+        ).update({"is_synced": True}, synchronize_session=False)
+        session.commit()
+        print(f"✅ Отмечено {len(feedback_ids)} записей TaskPriority как синхронизированных")
+    except Exception as e:
+        session.rollback()
+        print(f"❌ Ошибка при маркировке TaskPriority: {e}")
+    finally:
+        session.close()
+
+
+def get_ml_feedback_stats():
+    """Возвращает статистику по feedback записям"""
+    session = Session()
+    try:
+        total_taskload = session.query(MLFeedbackTaskLoad).count()
+        unsynced_taskload = session.query(MLFeedbackTaskLoad).filter(
+            MLFeedbackTaskLoad.is_synced == False
+        ).count()
+        
+        total_taskpriority = session.query(MLFeedbackTaskPriority).count()
+        unsynced_taskpriority = session.query(MLFeedbackTaskPriority).filter(
+            MLFeedbackTaskPriority.is_synced == False
+        ).count()
+        
+        return {
+            "taskload_total": total_taskload,
+            "taskload_unsynced": unsynced_taskload,
+            "taskpriority_total": total_taskpriority,
+            "taskpriority_unsynced": unsynced_taskpriority
+        }
+    finally:
+        session.close()
 

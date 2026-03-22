@@ -1,10 +1,12 @@
 import sys
-
 from PyQt6.QtWidgets import QStackedWidget, QApplication
+from PyQt6.QtCore import QTimer
 
 from api.auth_manager import AuthManager
 from ui.login_window import LoginScreen
 from ui.main_window import MainWindow
+from ui.sync_progress_dialog import SyncProgressDialog
+from api.sync_service import SyncService
 
 
 class AppManager(QStackedWidget):
@@ -28,7 +30,45 @@ class AppManager(QStackedWidget):
     def show_main_window(self, token):
         AuthManager.save_session(token)
         self.token = token
-        self.main_window = MainWindow(token)
+        
+        self.sync_dialog = SyncProgressDialog()
+        self.sync_dialog.show()
+        
+        QTimer.singleShot(100, lambda: self._run_background_sync(token))
+    
+    def _run_background_sync(self, token):
+        """Запуск синхронизации в фоне"""
+        try:
+            self.sync_dialog.set_status("Синхронизация задач...")
+            
+            # Синхронизация задач
+            sync_service = SyncService(token)
+            success, message = sync_service.run_sync()
+            
+            if success:
+                self.sync_dialog.set_status("✅ Синхронизация завершена!")
+                self.sync_dialog.set_details(message)
+                
+                # Закрываем диалог через 1 секунду
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(1000, self._show_main_window)
+            else:
+                self.sync_dialog.set_status("⚠️ Ошибка синхронизации")
+                self.sync_dialog.set_details(message)
+                QTimer.singleShot(1500, self._show_main_window)
+                
+        except Exception as e:
+            self.sync_dialog.set_status("⚠️ Ошибка")
+            self.sync_dialog.set_details(str(e))
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(1500, self._show_main_window)
+    
+    def _show_main_window(self):
+        """Показ главного окна после синхронизации"""
+        if hasattr(self, 'sync_dialog'):
+            self.sync_dialog.finish()
+        
+        self.main_window = MainWindow(self.token)
         self.addWidget(self.main_window)
         self.setCurrentWidget(self.main_window)
 

@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, DateTime, Date, ForeignKey, CheckConstraint
+    Column, Integer, String, DateTime, Date, ForeignKey, CheckConstraint, Float, Boolean
 )
 from sqlalchemy.orm import declarative_base, relationship
 from datetime import datetime, timezone
@@ -50,6 +50,40 @@ class DailyStats(Base):
     completed_tasks = Column(Integer)
     overdue_tasks = Column(Integer)
     in_progress_tasks = Column(Integer)
+
+
+class MLFeedbackTaskLoad(Base):
+    __tablename__ = "ml_feedback_taskload"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
+    
+    active_tasks = Column(Integer)
+    avg_priority = Column(Float)
+    max_priority = Column(Float)
+    avg_hours_to_deadline = Column(Float)
+    overdue_tasks = Column(Integer)
+    
+    predicted_workload = Column(Integer, CheckConstraint("predicted_workload BETWEEN 0 AND 100"))
+    
+    actual_workload = Column(Integer, CheckConstraint("actual_workload BETWEEN 0 AND 100"))
+    
+    is_synced = Column(Boolean, default=False)
+
+
+class MLFeedbackTaskPriority(Base):
+    __tablename__ = "ml_feedback_taskpriority"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.now(timezone.utc))
+    
+    task_id = Column(String(36))
+    task_type = Column(String)
+    hours_left = Column(Float)
+    urgency = Column(Integer)
+    user_priority = Column(String)
+    
+    is_synced = Column(Boolean, default=False)
 
 
 

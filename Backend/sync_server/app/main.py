@@ -1,12 +1,13 @@
 from fastapi import FastAPI
 from .database import engine, Base, SessionLocal
 from .models import User, Task, TaskType
-from .api import auth_routes, sync_routes
+from .api import auth_routes, sync_routes, ml_routes
 
 app = FastAPI(title="ProductivitySync Server")
 
 app.include_router(auth_routes.router)
 app.include_router(sync_routes.router)
+app.include_router(ml_routes.router)
 
 @app.on_event("startup")
 def startup():

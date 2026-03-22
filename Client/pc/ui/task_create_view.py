@@ -2,13 +2,15 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout,QLineEdit,QPushButton,QLabel,QSpinBox,
                              QComboBox,QMessageBox)
 from PyQt6.QtCore import pyqtSignal, Qt
+import uuid
 
 from local_db.data_manager import insert_task, update_daily_info_add_task, select_tasks_for_dupsearch, \
     select_duplicate_deadline
-from datetime import date as dt_date
+from datetime import date as dt_date, datetime
 from difflib import SequenceMatcher
 
 from ml.load import  predict_priority
+from ml.feedback_collector import FeedbackCollector
 
 class TaskWindow(QWidget):
     task_saved = pyqtSignal(str, str)
@@ -240,6 +242,24 @@ class TaskWindow(QWidget):
         priority = self.priority_map.get(russian_priority, russian_priority)
         deadline = self.deadline_str
         urgency = influence + self_priority
+        
+        try:
+            deadline_date = datetime.strptime(deadline, "%Y-%m-%d").date()
+            today = dt_date.today()
+            
+            if deadline_date < today:
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Некорректная дата")
+                msg.setText("❌ Дедлайн не может быть раньше сегодняшней даты!\n\n"
+                           f"Выбранная дата: {deadline_date.strftime('%d.%m.%Y')}\n"
+                           f"Сегодняшняя дата: {today.strftime('%d.%m.%Y')}")
+                msg.setIcon(QMessageBox.Icon.Warning)
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
+                return
+        except Exception as e:
+            print(f"⚠️ Ошибка при проверке даты: {e}")
+        
         tasks = select_tasks_for_dupsearch()
         duplicates = check_for_duplicates(title, desc, tasks)
         if duplicates:
@@ -259,8 +279,24 @@ class TaskWindow(QWidget):
 
             if user_choice == QMessageBox.StandardButton.No:
                 return
+        
+        if russian_priority != "Авто":
+            try:
+                task_id = str(uuid.uuid4()) 
+                FeedbackCollector.submit_task_priority_feedback(
+                    task_id=task_id,
+                    task_type=task_type,
+                    deadline=datetime.strptime(deadline, "%Y-%m-%d"),
+                    urgency=urgency,
+                    user_priority=priority
+                )
+                print(f"✅ TaskPriority feedback сохранён для задачи: {title}")
+            except Exception as e:
+                print(f"⚠️ Не удалось сохранить TaskPriority feedback: {e}")
+        
         if priority == "Auto":
             priority = predict_priority(task_type,deadline,urgency)
+        
         insert_task(title, desc, task_type, self_priority, influence, deadline ,priority)
         today = dt_date.today()
         update_daily_info_add_task(today)

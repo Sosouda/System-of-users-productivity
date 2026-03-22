@@ -6,6 +6,8 @@ from local_db.data_manager import Session
 import json
 import os
 
+from ml.weights_sync import MLWeightsSync
+
 
 class SyncService:
     def __init__(self, token):
@@ -17,13 +19,22 @@ class SyncService:
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
             self.url = f"{config.get('server_url', 'http://localhost:8000')}/sync"
+            self.sync_enabled = config.get('sync_enabled', True)
         except FileNotFoundError:
             self.url = "http://localhost:8000/sync"
+            self.sync_enabled = True
             print(f"WARNING: config.json not found, using default URL: {self.url}")
 
         self.settings = QSettings("MyCompany", "SPS")
+        
+        self.ml_sync = MLWeightsSync(token)
+        self.ml_sync_enabled = config.get('ml_sync_enabled', True)
 
     def run_sync(self):
+        if not self.sync_enabled:
+            print("ℹ️ Синхронизация отключена в config.json")
+            return True, "Синхронизация отключена"
+        
         session = Session()
         tasks_count = session.query(Task).count()
 
@@ -83,6 +94,12 @@ class SyncService:
             return False, str(e)
         finally:
             session.close()
+        
+        if self.ml_sync_enabled:
+            try:
+                self.ml_sync.full_sync()
+            except Exception as e:
+                print(f"⚠️ ML синхронизация не выполнена: {e}")
 
     def _parse_dt(self, dt_str):
         if not dt_str:
@@ -94,7 +111,7 @@ class SyncService:
         try:
             r_updated = self._parse_dt(r_task.get('updated_at')).replace(tzinfo=None)
             r_created = self._parse_dt(r_task.get('created_at')).replace(tzinfo=None)
-            r_deadline = self._parse_dt(r_task.get('deadline'))
+            r_deadline = self._parse_dt(r_task.get('deadline')).replace(tzinfo=None) if r_task.get('deadline') else None
 
             local_task = session.query(Task).filter_by(id=r_task['id']).first()
 
